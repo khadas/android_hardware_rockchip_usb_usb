@@ -75,6 +75,7 @@ ScopedAStatus Usb::resetUsbPort(const std::string& in_portName, int64_t in_trans
 
 // TODO: Check VTS
 Status queryMoistureDetectionStatus(std::vector<PortStatus> *currentPortStatus) {
+    if (currentPortStatus->size() == 0) return Status::SUCCESS;
     string enabled, status, path, DetectedPath;
 
     (*currentPortStatus)[0].supportedContaminantProtectionModes
