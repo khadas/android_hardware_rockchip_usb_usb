@@ -57,20 +57,53 @@ ScopedAStatus Usb::enableUsbData(const string& in_portName, bool in_enable,
         int64_t in_transactionId) {
     ALOGV("%s %s %d %s", __func__, in_portName.c_str(), (int)in_transactionId,
           (in_enable) ? "Y" : "N");
-    return ScopedAStatus::fromExceptionCode(EX_UNSUPPORTED_OPERATION);
+
+    pthread_mutex_lock(&mLock);
+    if (mCallback != NULL) {
+        ScopedAStatus ret = mCallback->notifyEnableUsbDataStatus(
+            in_portName, in_enable, Status::NOT_SUPPORTED, in_transactionId);
+        if (!ret.isOk())
+            ALOGE("notifyEnableUsbDataStatus error %s", ret.getDescription().c_str());
+    } else {
+        ALOGE("Not notifying the userspace. Callback is not set");
+    }
+    pthread_mutex_unlock(&mLock);
+    return ScopedAStatus::ok();
 }
 
 // TODO: Check VTS
 ScopedAStatus Usb::enableUsbDataWhileDocked(const string& in_portName,
         int64_t in_transactionId) {
     ALOGV("%s %s %d", __func__, in_portName.c_str(), (int)in_transactionId);
-    return ScopedAStatus::fromExceptionCode(EX_UNSUPPORTED_OPERATION);
+
+    pthread_mutex_lock(&mLock);
+    if (mCallback != NULL) {
+        ScopedAStatus ret = mCallback->notifyEnableUsbDataWhileDockedStatus(
+            in_portName, Status::NOT_SUPPORTED, in_transactionId);
+        if (!ret.isOk())
+            ALOGE("notifyEnableUsbDataStatus error %s", ret.getDescription().c_str());
+    } else {
+        ALOGE("Not notifying the userspace. Callback is not set");
+    }
+    pthread_mutex_unlock(&mLock);
+    return ScopedAStatus::ok();
 }
 
 // TODO: Check VTS
 ScopedAStatus Usb::resetUsbPort(const std::string& in_portName, int64_t in_transactionId) {
     ALOGV("%s %s %d", __func__, in_portName.c_str(), (int)in_transactionId);
-    return ScopedAStatus::fromExceptionCode(EX_UNSUPPORTED_OPERATION);
+
+    pthread_mutex_lock(&mLock);
+    if (mCallback != NULL) {
+        ScopedAStatus ret = mCallback->notifyResetUsbPortStatus(
+            in_portName, Status::NOT_SUPPORTED, in_transactionId);
+        if (!ret.isOk())
+            ALOGE("notifyTransactionStatus error %s", ret.getDescription().c_str());
+    } else {
+        ALOGE("Not notifying the userspace. Callback is not set");
+    }
+    pthread_mutex_unlock(&mLock);
+    return ::ndk::ScopedAStatus::ok();
 }
 
 // TODO: Check VTS
@@ -290,7 +323,19 @@ ScopedAStatus Usb::switchRole(const string& in_portName, const PortRole& in_role
 ScopedAStatus Usb::limitPowerTransfer(const string& in_portName, bool in_limit,
         int64_t in_transactionId) {
     ALOGV("%s %s %d %d", __func__, in_portName.c_str(), (int)in_limit, (int)in_transactionId);
-    return ScopedAStatus::fromExceptionCode(EX_UNSUPPORTED_OPERATION);
+
+    pthread_mutex_lock(&mLock);
+    if (mCallback != NULL && in_transactionId >= 0) {
+        ScopedAStatus ret = mCallback->notifyLimitPowerTransferStatus(
+            in_portName, in_limit, Status::NOT_SUPPORTED, in_transactionId);
+        if (!ret.isOk())
+            ALOGE("limitPowerTransfer error %s", ret.getDescription().c_str());
+    } else {
+        ALOGE("Not notifying the userspace. Callback is not set");
+    }
+
+    pthread_mutex_unlock(&mLock);
+    return ScopedAStatus::ok();
 }
 
 Status getAccessoryConnected(const string &portName, string *accessory) {
