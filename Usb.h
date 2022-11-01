@@ -28,6 +28,8 @@
 // structures created and uvent fired.
 #define PORT_TYPE_TIMEOUT 8
 
+#define PULLUP_PATH "/config/usb_gadget/g1/UDC"
+
 namespace aidl {
 namespace android {
 namespace hardware {

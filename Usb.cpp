@@ -93,10 +93,16 @@ ScopedAStatus Usb::enableUsbDataWhileDocked(const string& in_portName,
 ScopedAStatus Usb::resetUsbPort(const std::string& in_portName, int64_t in_transactionId) {
     ALOGV("%s %s %d", __func__, in_portName.c_str(), (int)in_transactionId);
 
+    bool result = false;
+    if (!WriteStringToFile("none", PULLUP_PATH)) {
+        ALOGI("Gadget %s cannot be pulled down: %s", PULLUP_PATH, strerror(errno));
+        result = false;
+    }
+
     pthread_mutex_lock(&mLock);
     if (mCallback != NULL) {
         ScopedAStatus ret = mCallback->notifyResetUsbPortStatus(
-            in_portName, Status::NOT_SUPPORTED, in_transactionId);
+            in_portName, result ? Status::SUCCESS : Status::ERROR, in_transactionId);
         if (!ret.isOk())
             ALOGE("notifyTransactionStatus error %s", ret.getDescription().c_str());
     } else {
