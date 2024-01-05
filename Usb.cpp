@@ -30,6 +30,7 @@
 #include <regex>
 #include <thread>
 #include <unordered_map>
+#include <errno.h>
 
 #include <cutils/uevent.h>
 #include <sys/epoll.h>
@@ -38,6 +39,7 @@
 
 #include "Usb.h"
 
+using android::base::GetProperty;
 using android::base::Trim;
 
 namespace aidl {
@@ -49,6 +51,10 @@ volatile bool destroyThread;
 
 constexpr char kTypecPath[] = "/sys/class/typec";
 constexpr char kPowerSupplyUsbType[] = "/sys/class/power_supply/usb/usb_type";
+constexpr char kGadgetNameProp[] = "vendor.usb.controller";
+constexpr char kUsbDataEnablePath[] = "/sys/bus/platform/drivers/dwc3/bind";
+constexpr char kUsbDataDisablePath[] = "/sys/bus/platform/drivers/dwc3/unbind";
+
 void queryVersionHelper(android::hardware::usb::Usb *usb,
                         std::vector<PortStatus> *currentPortStatus);
 
@@ -58,16 +64,39 @@ ScopedAStatus Usb::enableUsbData(const string& in_portName, bool in_enable,
     ALOGV("%s %s %d %s", __func__, in_portName.c_str(), (int)in_transactionId,
           (in_enable) ? "Y" : "N");
 
+    bool result = true;
+    std::vector<PortStatus> currentPortStatus;
+
+    string EnableVal = GetProperty(kGadgetNameProp, "fc000000.usb");
+    string DisableVal = GetProperty(kGadgetNameProp, "fc000000.usb");
+    if (in_enable) {
+        ALOGI("Enable Usb Data (PATH:%s)", kUsbDataEnablePath);
+        if (!WriteStringToFile(EnableVal /* connect */, kUsbDataEnablePath)) {
+            ALOGE("Not able to turn on usb connection notification: %s", strerror(errno));
+            result = false;
+        }
+    } else {
+        ALOGI("Disable Usb Data (PATH:%s)", kUsbDataDisablePath);
+        if (!WriteStringToFile(DisableVal /* disconnect */, kUsbDataDisablePath)) {
+            ALOGE("Not able to turn on usb connection notification: %s", strerror(errno));
+            result = false;
+        }
+    }
+    if (result) {
+        mUsbDataEnabled = in_enable;
+    }
+
     pthread_mutex_lock(&mLock);
     if (mCallback != NULL) {
         ScopedAStatus ret = mCallback->notifyEnableUsbDataStatus(
-            in_portName, in_enable, Status::NOT_SUPPORTED, in_transactionId);
+            in_portName, in_enable, result? Status::SUCCESS : Status::ERROR, in_transactionId);
         if (!ret.isOk())
             ALOGE("notifyEnableUsbDataStatus error %s", ret.getDescription().c_str());
     } else {
         ALOGE("Not notifying the userspace. Callback is not set");
     }
     pthread_mutex_unlock(&mLock);
+    queryVersionHelper(this, &currentPortStatus);
     return ScopedAStatus::ok();
 }
 
@@ -512,6 +541,17 @@ Status getPortStatusHelper(android::hardware::usb::Usb *usb,
 
             (*currentPortStatus)[i].supportedModes.push_back(PortMode::DRP);
 
+            if (!usb->mUsbDataEnabled) {
+                // data disable
+                ALOGW("data disabled, override all role to NONE");
+                (*currentPortStatus)[i].usbDataStatus.push_back(UsbDataStatus::DISABLED_FORCE);
+                (*currentPortStatus)[i].currentDataRole = PortDataRole::NONE;
+                (*currentPortStatus)[i].currentPowerRole = PortPowerRole::NONE;
+                (*currentPortStatus)[i].currentMode = PortMode::NONE;
+            } else {
+                (*currentPortStatus)[i].usbDataStatus.push_back(UsbDataStatus::ENABLED);
+            }
+
             // When connected return powerBrickStatus
             if (port.second) {
                 string usbType;
@@ -531,11 +571,12 @@ Status getPortStatusHelper(android::hardware::usb::Usb *usb,
                 (*currentPortStatus)[i].powerBrickStatus = PowerBrickStatus::NOT_CONNECTED;
             }
 
-            ALOGI("%d:%s connected:%d canChangeMode:%d canChagedata:%d canChangePower:%d ",
+            ALOGI("%d:%s connected:%d canChangeMode:%d canChagedata:%d canChangePower:%d usbDataEnabled:%d",
                 i, port.first.c_str(), port.second,
                 (*currentPortStatus)[i].canChangeMode,
                 (*currentPortStatus)[i].canChangeDataRole,
-                (*currentPortStatus)[i].canChangePowerRole);
+                (*currentPortStatus)[i].canChangePowerRole,
+                 usb->mUsbDataEnabled ? 1 : 0);
         }
 
         return Status::SUCCESS;
